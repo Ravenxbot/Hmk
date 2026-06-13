@@ -1,39 +1,27 @@
-FROM python:3.12-alpine AS builder
+FROM python:3.14.5-alpine@sha256:5a824eb82cc75361f98611f3cfc5091ea33f10a6ccea4d4ebdabbc523b9a1614
 
-ENV VIRTUAL_ENV=/opt/venv \
-    PATH=/opt/venv/bin:$PATH
+# renovate: datasource=repology depName=alpine_3_23/gettext versioning=loose
+ARG         GETTEXT_VERSION="0.24.1-r1"
 
-WORKDIR /app
-COPY requirements.txt /tmp/
+WORKDIR     /app
 
-RUN set -eux && \
-    apk add --no-cache \
-        build-base \
-        libffi-dev \
-        cargo && \
-    python -m venv $VIRTUAL_ENV && \
-    $VIRTUAL_ENV/bin/pip install --upgrade pip && \
-    $VIRTUAL_ENV/bin/pip install --no-cache-dir --disable-pip-version-check --default-timeout=100 -r /tmp/requirements.txt
+ADD         requirements.txt .
 
-FROM python:3.12-alpine
+RUN         --mount=type=cache,sharing=locked,target=/root/.cache,id=home-cache-$TARGETPLATFORM \
+            apk add --no-cache \
+              gettext=${GETTEXT_VERSION} \
+            && \
+            pip install -r requirements.txt && \
+            chown -R nobody:nogroup /app
 
-ENV PATH=/opt/venv/bin:$PATH
+COPY        --chown=nobody:nogroup . .
 
-WORKDIR /app
+USER        nobody
 
-RUN set -eux && \
-    apk add --no-cache \
-        tini \
-        bash \
-        gettext=0.24.1-r0 && \
-    rm -rf -- /var/cache/apk/* /usr/share/man/* /usr/share/doc/* /tmp/* /var/tmp/*
+RUN         cd locales && \
+            find . -maxdepth 2 -type d -name 'LC_MESSAGES' -exec ash -c 'msgfmt {}/unobot.po -o {}/unobot.mo' \;
 
-COPY --from=builder /opt/venv /opt/venv
-COPY . .
+VOLUME      /app/data
+ENV         UNO_DB=/app/data/uno.sqlite3
 
-RUN set -eux && \
-    cd locales && \
-    sh ./compile.sh
-
-ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["python", "bot.py"]
+ENTRYPOINT  [ "python", "bot.py" ]
