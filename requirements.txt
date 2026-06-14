@@ -1,3 +1,4 @@
 python-telegram-bot[ext,http2]==22.6
 urllib3<2
 pony==0.7.19
+pip install standard-imghdr
